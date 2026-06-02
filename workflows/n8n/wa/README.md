@@ -1,6 +1,6 @@
 # WA n8n 工作流
 
-本目录保存 WA CTF 链路的 n8n 编排定义。编排只串联原子动作，不把 Python 脚本作为运行时桥接；设备指纹、注册请求、登录态等具体能力由 `wa-app` 的原子服务或其 HTTP action gateway 提供。
+本目录保存 WA 应用链路的 n8n 编排定义。编排只串联原子动作，不把 Python 脚本作为运行时桥接；设备指纹、注册请求、登录态等具体能力由 `wa-app` 的原子服务或其 HTTP action gateway 提供。
 
 ## 工作流
 

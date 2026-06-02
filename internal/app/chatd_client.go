@@ -293,7 +293,7 @@ func (c *chatdClient) dialHTTPConnect(ctx context.Context, parsed *url.URL, targ
 		conn = tlsConn
 	}
 	_ = conn.SetDeadline(time.Now().Add(c.cfg.Timeout))
-	headers := []string{"CONNECT " + target + " HTTP/1.1", "Host: " + target, "Proxy-Connection: keep-alive", "User-Agent: WhatsApp-CTF-GoChatd/1"}
+	headers := []string{"CONNECT " + target + " HTTP/1.1", "Host: " + target, "Proxy-Connection: keep-alive", "User-Agent: WhatsApp-GoChatd/1"}
 	if parsed.User != nil {
 		password, _ := parsed.User.Password()
 		credential := parsed.User.Username() + ":" + password

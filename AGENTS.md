@@ -2,7 +2,7 @@
 
 ## 边界
 
-- `wa-app` 负责 WA CTF 解题链路的应用层建模、原子 RPC 服务和运行时适配。
+- `wa-app` 负责 WA 应用链路的应用层建模、原子 RPC 服务和运行时适配。
 - Proto 是本目录领域模型、RPC 请求/响应、状态、错误码和事件语义的唯一真源。
 - 不直接 import `wa-re`、`app-release-re` 或其他 sibling 目录源码；后续实现只能通过脚本迁移、发布包、RPC 或配置边界协作。
 - 不在契约中暴露具体代理地址、endpoint URL、数据库表名、Redis key、脚本路径、APK 文件路径等实现细节。
