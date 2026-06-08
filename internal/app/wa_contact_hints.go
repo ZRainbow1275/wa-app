@@ -19,11 +19,12 @@ const (
 )
 
 type waContactHint struct {
-	LIDJID      string `json:"lid_jid,omitempty"`
-	PNJID       string `json:"pn_jid,omitempty"`
-	DisplayName string `json:"display_name,omitempty"`
-	WAName      string `json:"wa_name,omitempty"`
-	Username    string `json:"username,omitempty"`
+	LIDJID       string `json:"lid_jid,omitempty"`
+	PNJID        string `json:"pn_jid,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+	WAName       string `json:"wa_name,omitempty"`
+	Username     string `json:"username,omitempty"`
+	VerifiedName string `json:"verified_name,omitempty"`
 }
 
 func nativeContactHints(raw []byte) []waContactHint {
@@ -100,12 +101,13 @@ func contactHintsFromChatdAttrs(attrs map[string]string) []waContactHint {
 	}
 	displayName := waContactName(firstChatdAttr(attrs, "notify", "notify_name", "display_name"))
 	username := waContactUsername(firstChatdAttr(attrs, "participant_username", "peer_recipient_username", "author_username", "username"))
+	verifiedName := waContactName(firstChatdAttr(attrs, "verified_name", "business_verified_name", "verified_business_name"))
 	peerLIDKeys := []string{"peer_recipient_lid", "recipient_latest_lid", "recipient_lid", "peer_lid"}
 	peerPNKeys := []string{"peer_recipient_pn", "peer_recipient_pn_jid", "recipient_pn", "recipient_pn_jid", "peer_pn", "peer_pn_jid"}
 	actorLIDKeys := []string{"author", "author_lid", "creator_lid"}
 	actorPNKeys := []string{"author_pn", "author_pn_jid", "creator_pn", "creator_pn_jid", "pn_jid"}
 	contactLIDKeys := []string{"contact_lid"}
-	contactPNKeys := []string{"contact_pn", "contact_pn_jid", "pn_jid", "new_jid"}
+	contactPNKeys := []string{"contact_pn", "contact_pn_jid", "pn_jid", "new_jid", "number", "phone", "phone_number", "business_phone_number", "wa_id"}
 	fallbackLIDKeys := []string{
 		"sender_lid", "participant_lid", "peer_recipient_lid", "recipient_latest_lid", "recipient_lid", "peer_lid",
 		"contact_lid", "author_lid", "creator_lid", "caller_lid", "invitee_lid", "lid", "jid", "participant", "author", "from",
@@ -114,22 +116,22 @@ func contactHintsFromChatdAttrs(attrs map[string]string) []waContactHint {
 		"sender_pn", "sender_pn_jid", "participant_pn", "participant_pn_jid", "peer_recipient_pn", "peer_recipient_pn_jid",
 		"recipient_pn", "recipient_pn_jid", "peer_pn", "peer_pn_jid", "contact_pn", "contact_pn_jid", "author_pn", "author_pn_jid",
 		"creator_pn", "creator_pn_jid", "caller_pn", "caller_pn_jid", "invitee_pn", "invitee_pn_jid", "from_pn", "from_pn_jid",
-		"pn_jid", "new_jid", "jid", "participant", "author", "from",
+		"pn", "pn_jid", "new_jid", "number", "phone", "phone_number", "business_phone_number", "wa_id", "jid", "participant", "author", "from",
 	}
 	hints := []waContactHint{}
-	appendChatdAttrHints(&hints, attrs, displayName, username, []string{"sender_lid"}, []string{"sender_pn", "sender_pn_jid"})
-	appendChatdAttrHints(&hints, attrs, displayName, username, []string{"participant_lid", "participant", "jid"}, []string{"participant_pn", "participant_pn_jid", "pn_jid", "jid"})
-	appendChatdAttrHints(&hints, attrs, displayName, waContactUsername(firstChatdAttr(attrs, "peer_recipient_username", "username")), peerLIDKeys, peerPNKeys)
-	appendChatdAttrHints(&hints, attrs, displayName, waContactUsername(firstChatdAttr(attrs, "author_username", "username")), actorLIDKeys, actorPNKeys)
-	appendChatdAttrHints(&hints, attrs, displayName, username, []string{"from"}, []string{"from_pn", "from_pn_jid", "pn_jid", "new_jid"})
-	appendChatdAttrHints(&hints, attrs, waContactName(firstNonEmpty(firstChatdAttr(attrs, "contact_push_name"), displayName)), waContactUsername(firstChatdAttr(attrs, "contact_username", "username")), contactLIDKeys, contactPNKeys)
-	appendChatdAttrHints(&hints, attrs, displayName, username, []string{"caller_lid"}, []string{"caller_pn", "caller_pn_jid"})
-	appendChatdAttrHints(&hints, attrs, displayName, username, []string{"invitee_lid"}, []string{"invitee_pn", "invitee_pn_jid"})
+	appendChatdAttrHints(&hints, attrs, displayName, username, verifiedName, []string{"sender_lid"}, []string{"sender_pn", "sender_pn_jid"})
+	appendChatdAttrHints(&hints, attrs, displayName, username, verifiedName, []string{"participant_lid", "participant", "jid"}, []string{"participant_pn", "participant_pn_jid", "pn_jid", "jid"})
+	appendChatdAttrHints(&hints, attrs, displayName, waContactUsername(firstChatdAttr(attrs, "peer_recipient_username", "username")), verifiedName, peerLIDKeys, peerPNKeys)
+	appendChatdAttrHints(&hints, attrs, displayName, waContactUsername(firstChatdAttr(attrs, "author_username", "username")), verifiedName, actorLIDKeys, actorPNKeys)
+	appendChatdAttrHints(&hints, attrs, displayName, username, verifiedName, []string{"from"}, []string{"from_pn", "from_pn_jid", "pn_jid", "new_jid"})
+	appendChatdAttrHints(&hints, attrs, waContactName(firstNonEmpty(firstChatdAttr(attrs, "contact_push_name"), displayName)), waContactUsername(firstChatdAttr(attrs, "contact_username", "username")), verifiedName, contactLIDKeys, contactPNKeys)
+	appendChatdAttrHints(&hints, attrs, displayName, username, verifiedName, []string{"caller_lid"}, []string{"caller_pn", "caller_pn_jid"})
+	appendChatdAttrHints(&hints, attrs, displayName, username, verifiedName, []string{"invitee_lid"}, []string{"invitee_pn", "invitee_pn_jid"})
 	if len(hints) == 0 {
 		lids := chatdAttrJIDs(attrs, "@lid", fallbackLIDKeys...)
 		pns := chatdAttrJIDs(attrs, "@s.whatsapp.net", fallbackPNKeys...)
 		if len(lids) == 1 && len(pns) <= 1 {
-			hint := waContactHint{LIDJID: lids[0], DisplayName: displayName, Username: username}
+			hint := waContactHint{LIDJID: lids[0], DisplayName: displayName, Username: username, VerifiedName: verifiedName}
 			if len(pns) == 1 {
 				hint.PNJID = pns[0]
 			}
@@ -149,7 +151,7 @@ func firstChatdAttr(attrs map[string]string, keys ...string) string {
 	return firstNonEmpty(values...)
 }
 
-func appendChatdAttrHints(hints *[]waContactHint, attrs map[string]string, displayName string, username string, lidKeys []string, pnKeys []string) {
+func appendChatdAttrHints(hints *[]waContactHint, attrs map[string]string, displayName string, username string, verifiedName string, lidKeys []string, pnKeys []string) {
 	lids := chatdAttrJIDs(attrs, "@lid", lidKeys...)
 	if len(lids) == 0 {
 		return
@@ -159,7 +161,7 @@ func appendChatdAttrHints(hints *[]waContactHint, attrs map[string]string, displ
 		if len(lids) != 1 {
 			return
 		}
-		hint := waContactHint{LIDJID: lids[0], DisplayName: displayName, Username: username}
+		hint := waContactHint{LIDJID: lids[0], DisplayName: displayName, Username: username, VerifiedName: verifiedName}
 		if hint.valid() {
 			*hints = append(*hints, hint)
 		}
@@ -167,7 +169,7 @@ func appendChatdAttrHints(hints *[]waContactHint, attrs map[string]string, displ
 	}
 	for _, lid := range lids {
 		for _, pn := range pns {
-			hint := waContactHint{LIDJID: lid, PNJID: pn, DisplayName: displayName, Username: username}
+			hint := waContactHint{LIDJID: lid, PNJID: pn, DisplayName: displayName, Username: username, VerifiedName: verifiedName}
 			if hint.valid() {
 				*hints = append(*hints, hint)
 			}
@@ -669,7 +671,7 @@ func applyContactRecordJID(hint *waContactHint, value string) {
 
 func (h waContactHint) valid() bool {
 	h = h.normalized()
-	return h.LIDJID != "" && (h.PNJID != "" || h.DisplayName != "" || h.WAName != "" || h.Username != "")
+	return h.LIDJID != "" && (h.PNJID != "" || h.DisplayName != "" || h.WAName != "" || h.Username != "" || h.VerifiedName != "")
 }
 
 func (h waContactHint) normalized() waContactHint {
@@ -678,6 +680,7 @@ func (h waContactHint) normalized() waContactHint {
 	h.DisplayName = waContactName(h.DisplayName)
 	h.WAName = waContactName(h.WAName)
 	h.Username = waContactName(h.Username)
+	h.VerifiedName = waContactName(h.VerifiedName)
 	if h.LIDJID != "" && !strings.HasSuffix(h.LIDJID, "@lid") {
 		h.LIDJID = ""
 	}
@@ -708,6 +711,7 @@ func dedupeWAContactHints(hints []waContactHint) []waContactHint {
 		current.DisplayName = firstNonEmpty(current.DisplayName, hint.DisplayName)
 		current.WAName = firstNonEmpty(current.WAName, hint.WAName)
 		current.Username = firstNonEmpty(current.Username, hint.Username)
+		current.VerifiedName = firstNonEmpty(current.VerifiedName, hint.VerifiedName)
 		merged[key] = current
 	}
 	out := make([]waContactHint, 0, len(order))

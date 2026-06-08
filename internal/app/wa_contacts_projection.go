@@ -117,8 +117,12 @@ func contactFromContactHint(accountID string, hint waContactHint, seenAt time.Ti
 		return nil
 	}
 	contact.Number = contactNumberForJID(hint.PNJID)
-	contact.DisplayName = firstNonEmpty(hint.DisplayName, hint.WAName, hint.Username, fallbackWAContactDisplayName(contact.GetKind(), contact.GetJid(), contact.GetNumber()))
+	contact.DisplayName = firstNonEmpty(hint.DisplayName, hint.VerifiedName, hint.WAName, hint.Username, fallbackWAContactDisplayName(contact.GetKind(), contact.GetJid(), contact.GetNumber()))
 	contact.WaName = firstNonEmpty(hint.WAName, hint.Username)
+	contact.VerifiedName = hint.VerifiedName
+	if hint.VerifiedName != "" {
+		contact.Kind = waappv1.WAContactKind_WA_CONTACT_KIND_BUSINESS
+	}
 	return contact
 }
 
