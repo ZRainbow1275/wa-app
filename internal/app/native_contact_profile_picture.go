@@ -103,7 +103,7 @@ func (e *NativeEngine) contactProfilePictureLocationFromProfileIQ(ctx context.Co
 }
 
 func contactProfilePictureTarget(jid string, pnJID string) string {
-	for _, value := range []string{pnJID, jid} {
+	for _, value := range []string{jid, pnJID} {
 		normalized := normalizeWAJID(value)
 		if normalized == "" {
 			continue
