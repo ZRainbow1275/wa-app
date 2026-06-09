@@ -385,18 +385,25 @@ func (s *PostgresStore) SaveInboundMessages(ctx context.Context, messages []*waa
 	batch := &pgx.Batch{}
 	for _, msg := range messages {
 		appErr := errorFromProto(msg.GetLastError())
-		batch.Queue(`INSERT INTO wa_inbound_messages (message_id, message_session_id, kind, encryption_state, ack_status, contact_ref, sender_ref, payload_ref, last_error_code, last_error_message, last_error_retryable, received_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-ON CONFLICT (message_id) DO UPDATE SET encryption_state=EXCLUDED.encryption_state, ack_status=EXCLUDED.ack_status, contact_ref=EXCLUDED.contact_ref, sender_ref=EXCLUDED.sender_ref, payload_ref=EXCLUDED.payload_ref, last_error_code=EXCLUDED.last_error_code, last_error_message=EXCLUDED.last_error_message, last_error_retryable=EXCLUDED.last_error_retryable`,
-			msg.GetMessageId(), msg.GetMessageSessionId(), msg.GetKind().String(), msg.GetEncryptionState().String(), msg.GetAckStatus().String(), msg.GetContactRef(), msg.GetSenderRef(), msg.GetPayloadRef(), errCode(appErr), errMessage(appErr), errRetryable(appErr), timeFromProto(msg.GetReceivedAt()))
+		batch.Queue(`INSERT INTO wa_inbound_messages (message_id, message_session_id, kind, encryption_state, ack_status, contact_ref, sender_ref, payload_ref, provider_message_id, provider_timestamp, read_at, delete_status, deleted_at, last_error_code, last_error_message, last_error_retryable, received_at)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+ON CONFLICT (message_id) DO UPDATE SET encryption_state=EXCLUDED.encryption_state, ack_status=EXCLUDED.ack_status, contact_ref=EXCLUDED.contact_ref, sender_ref=EXCLUDED.sender_ref, payload_ref=EXCLUDED.payload_ref, provider_message_id=COALESCE(NULLIF(EXCLUDED.provider_message_id,''), wa_inbound_messages.provider_message_id), provider_timestamp=COALESCE(EXCLUDED.provider_timestamp, wa_inbound_messages.provider_timestamp), read_at=COALESCE(EXCLUDED.read_at, wa_inbound_messages.read_at), delete_status=CASE WHEN wa_inbound_messages.delete_status='MESSAGE_DELETE_STATUS_DELETED_FOR_ME' AND EXCLUDED.delete_status='MESSAGE_DELETE_STATUS_NOT_DELETED' THEN wa_inbound_messages.delete_status ELSE EXCLUDED.delete_status END, deleted_at=COALESCE(EXCLUDED.deleted_at, wa_inbound_messages.deleted_at), last_error_code=EXCLUDED.last_error_code, last_error_message=EXCLUDED.last_error_message, last_error_retryable=EXCLUDED.last_error_retryable`,
+			msg.GetMessageId(), msg.GetMessageSessionId(), msg.GetKind().String(), msg.GetEncryptionState().String(), msg.GetAckStatus().String(), msg.GetContactRef(), msg.GetSenderRef(), msg.GetPayloadRef(), msg.GetProviderMessageId(), nullableProtoTime(msg.GetProviderTimestamp()), nullableProtoTime(msg.GetReadAt()), inboundDeleteStatusStorageValue(msg), nullableProtoTime(msg.GetDeletedAt()), errCode(appErr), errMessage(appErr), errRetryable(appErr), timeFromProto(msg.GetReceivedAt()))
 	}
 	return s.pool.SendBatch(ctx, batch).Close()
 }
 
+func inboundDeleteStatusStorageValue(msg *waappv1.InboundMessage) string {
+	if msg.GetDeleteStatus() == waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_UNSPECIFIED {
+		return waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED.String()
+	}
+	return msg.GetDeleteStatus().String()
+}
+
 func (s *PostgresStore) GetInboundMessage(ctx context.Context, id string) (*waappv1.InboundMessage, error) {
-	row := s.pool.QueryRow(ctx, `SELECT message_id,message_session_id,kind,encryption_state,ack_status,contact_ref,sender_ref,payload_ref,last_error_code,last_error_message,last_error_retryable,received_at FROM wa_inbound_messages WHERE message_id=$1`, id)
+	row := s.pool.QueryRow(ctx, `SELECT message_id,message_session_id,kind,encryption_state,ack_status,contact_ref,sender_ref,payload_ref,provider_message_id,provider_timestamp,read_at,delete_status,deleted_at,last_error_code,last_error_message,last_error_retryable,received_at FROM wa_inbound_messages WHERE message_id=$1`, id)
 	var r messageRow
-	if err := row.Scan(&r.id, &r.sessionID, &r.kind, &r.encryptionState, &r.ackStatus, &r.contactRef, &r.senderRef, &r.payloadRef, &r.errCode, &r.errMessage, &r.errRetryable, &r.receivedAt); err != nil {
+	if err := row.Scan(&r.id, &r.sessionID, &r.kind, &r.encryptionState, &r.ackStatus, &r.contactRef, &r.senderRef, &r.payloadRef, &r.providerMessageID, &r.providerTimestamp, &r.readAt, &r.deleteStatus, &r.deletedAt, &r.errCode, &r.errMessage, &r.errRetryable, &r.receivedAt); err != nil {
 		return nil, notFound(err, waappv1.WaErrorCode_WA_ERROR_CODE_MESSAGE_NOT_FOUND, "message not found")
 	}
 	return r.toProto(), nil
@@ -406,10 +413,10 @@ func (s *PostgresStore) ListPendingEncryptedInboundMessages(ctx context.Context,
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `SELECT m.message_id,m.message_session_id,m.kind,m.encryption_state,m.ack_status,m.contact_ref,m.sender_ref,m.payload_ref,m.last_error_code,m.last_error_message,m.last_error_retryable,m.received_at
+	rows, err := s.pool.Query(ctx, `SELECT m.message_id,m.message_session_id,m.kind,m.encryption_state,m.ack_status,m.contact_ref,m.sender_ref,m.payload_ref,m.provider_message_id,m.provider_timestamp,m.read_at,m.delete_status,m.deleted_at,m.last_error_code,m.last_error_message,m.last_error_retryable,m.received_at
 FROM wa_inbound_messages m
 JOIN wa_message_sessions s ON s.message_session_id=m.message_session_id
-WHERE s.wa_account_id=$1 AND s.client_profile_id=$2 AND m.encryption_state='MESSAGE_ENCRYPTION_STATE_ENCRYPTED' AND NOT EXISTS (
+WHERE s.wa_account_id=$1 AND s.client_profile_id=$2 AND m.encryption_state='MESSAGE_ENCRYPTION_STATE_ENCRYPTED' AND COALESCE(m.delete_status,'MESSAGE_DELETE_STATUS_NOT_DELETED')<>'MESSAGE_DELETE_STATUS_DELETED_FOR_ME' AND NOT EXISTS (
   SELECT 1 FROM wa_decrypted_messages d WHERE d.message_id=m.message_id
 )
 ORDER BY m.received_at ASC, m.message_id ASC
@@ -421,7 +428,7 @@ LIMIT $3`, waAccountIDValue, clientProfileID, limit)
 	messages := []*waappv1.InboundMessage{}
 	for rows.Next() {
 		var r messageRow
-		if err := rows.Scan(&r.id, &r.sessionID, &r.kind, &r.encryptionState, &r.ackStatus, &r.contactRef, &r.senderRef, &r.payloadRef, &r.errCode, &r.errMessage, &r.errRetryable, &r.receivedAt); err != nil {
+		if err := rows.Scan(&r.id, &r.sessionID, &r.kind, &r.encryptionState, &r.ackStatus, &r.contactRef, &r.senderRef, &r.payloadRef, &r.providerMessageID, &r.providerTimestamp, &r.readAt, &r.deleteStatus, &r.deletedAt, &r.errCode, &r.errMessage, &r.errRetryable, &r.receivedAt); err != nil {
 			return nil, err
 		}
 		messages = append(messages, r.toProto())
@@ -515,11 +522,16 @@ func (s *PostgresStore) ListAccountOTPMessages(ctx context.Context, waAccountIDV
 }
 
 func (s *PostgresStore) queryOTPMessagePage(ctx context.Context, waAccountIDValue string, cursor keysetCursor, limit int) (pgx.Rows, error) {
-	const base = `SELECT otp_message_id,wa_account_id,client_profile_id,registered_identity_id,message_id,candidate_id,source,source_party,otp_value,otp_redacted,otp_secret_ref,received_at,created_at,updated_at FROM wa_otp_messages WHERE wa_account_id=$1`
+	const base = `SELECT o.otp_message_id,o.wa_account_id,o.client_profile_id,o.registered_identity_id,o.message_id,o.candidate_id,o.source,o.source_party,o.otp_value,o.otp_redacted,o.otp_secret_ref,o.received_at,o.created_at,o.updated_at
+FROM wa_otp_messages o
+WHERE o.wa_account_id=$1 AND NOT EXISTS (
+  SELECT 1 FROM wa_inbound_messages m
+  WHERE m.message_id=o.message_id AND COALESCE(m.delete_status,'MESSAGE_DELETE_STATUS_NOT_DELETED')='MESSAGE_DELETE_STATUS_DELETED_FOR_ME'
+)`
 	if !hasKeysetCursor(cursor) {
-		return s.pool.Query(ctx, base+` ORDER BY received_at DESC, otp_message_id DESC LIMIT $2`, waAccountIDValue, limit)
+		return s.pool.Query(ctx, base+` ORDER BY o.received_at DESC, o.otp_message_id DESC LIMIT $2`, waAccountIDValue, limit)
 	}
-	return s.pool.Query(ctx, base+` AND (received_at, otp_message_id) < ($2, $3) ORDER BY received_at DESC, otp_message_id DESC LIMIT $4`, waAccountIDValue, cursor.UpdatedAt, cursor.ID, limit)
+	return s.pool.Query(ctx, base+` AND (o.received_at, o.otp_message_id) < ($2, $3) ORDER BY o.received_at DESC, o.otp_message_id DESC LIMIT $4`, waAccountIDValue, cursor.UpdatedAt, cursor.ID, limit)
 }
 
 func notFound(err error, code waappv1.WaErrorCode, message string) error {

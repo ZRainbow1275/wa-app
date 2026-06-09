@@ -18,6 +18,7 @@ type chatdNode struct {
 
 type chatdEncPayload struct {
 	StanzaID            string
+	StanzaTimestamp     string
 	Contact             string
 	Sender              string
 	ContactPN           string
@@ -810,6 +811,9 @@ func iterEncPayloads(node chatdNode) []chatdEncPayload {
 		if id := current.Attrs["id"]; id != "" {
 			refs.StanzaID = id
 		}
+		if stanzaTimestamp := current.Attrs["t"]; stanzaTimestamp != "" {
+			refs.StanzaTimestamp = stanzaTimestamp
+		}
 		if current.Tag == "message" {
 			senderLID := firstChatdAttr(current.Attrs, "sender_lid", "participant_lid")
 			senderPN := firstChatdAttr(current.Attrs, "sender_pn", "sender_pn_jid", "participant_pn", "participant_pn_jid")
@@ -829,6 +833,7 @@ func iterEncPayloads(node chatdNode) []chatdEncPayload {
 			if raw, ok := current.Content.([]byte); ok {
 				out = append(out, chatdEncPayload{
 					StanzaID:            refs.StanzaID,
+					StanzaTimestamp:     refs.StanzaTimestamp,
 					Contact:             refs.Contact,
 					Sender:              refs.Sender,
 					ContactPN:           refs.ContactPN,
@@ -854,6 +859,7 @@ func iterEncPayloads(node chatdNode) []chatdEncPayload {
 
 type chatdMessageRefs struct {
 	StanzaID            string
+	StanzaTimestamp     string
 	Contact             string
 	Sender              string
 	ContactPN           string

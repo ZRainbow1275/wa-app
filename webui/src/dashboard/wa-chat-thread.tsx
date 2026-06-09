@@ -1,5 +1,5 @@
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, useExternalStoreRuntime, useMessage, type AppendMessage } from '@assistant-ui/react';
-import { Copy, Info, Loader2 } from 'lucide-react';
+import { CheckCheck, Copy, Info, Loader2, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import type { LongConnectionState } from '../proto/byte/v/forge/waapp/v1/messaging';
 import type { WAAccount } from '../proto/byte/v/forge/waapp/v1/profile';
@@ -9,20 +9,20 @@ import { toAssistantMessage, type WaChatEvent, type WaChatMeta, type WaContact }
 import { WaConnectionDot } from './wa-connection-dot';
 import { WaMessageContent } from './wa-message-content';
 import { waAccountPath } from './wa-route-paths';
-import { Badge } from './ui';
+import { Badge, Button } from './ui';
 
-export function WaChatThread({ account, connection, contact, events, loading, error }: { account: WAAccount; connection?: LongConnectionState; contact?: WaContact; events: WaChatEvent[]; loading: boolean; error?: string }) {
+export function WaChatThread({ account, connection, contact, events, loading, error, actionBusy, onMarkRead, onDeleteMessage }: { account: WAAccount; connection?: LongConnectionState; contact?: WaContact; events: WaChatEvent[]; loading: boolean; error?: string; actionBusy?: boolean; onMarkRead: () => void; onDeleteMessage: (messageID: string) => void }) {
   const runtime = useExternalStoreRuntime<WaChatEvent>({ messages: events, convertMessage: toAssistantMessage, isDisabled: true, isLoading: loading, onNew: noopNewMessage });
   const title = contact?.title || '选择联系人';
   return (
     <section className="grid min-h-0 grid-rows-[auto_1fr_auto] overflow-hidden bg-card">
-      <ChatHeader account={account} contact={contact} connection={connection} loading={loading} />
+      <ChatHeader account={account} contact={contact} connection={connection} loading={loading} events={events} actionBusy={actionBusy} onMarkRead={onMarkRead} />
       <div className="h-full min-h-0">
         <AssistantRuntimeProvider runtime={runtime}>
           <ThreadPrimitive.Root className="h-full min-h-0">
             <ThreadPrimitive.Viewport autoScroll className="h-full min-h-0 space-y-3 overflow-y-auto bg-[#f6f8fb] p-5">
               <ThreadPrimitive.Empty><EmptyConversation title={title} /></ThreadPrimitive.Empty>
-              <ThreadPrimitive.Messages>{() => <BubbleMessage />}</ThreadPrimitive.Messages>
+              <ThreadPrimitive.Messages>{() => <BubbleMessage onDeleteMessage={onDeleteMessage} />}</ThreadPrimitive.Messages>
             </ThreadPrimitive.Viewport>
           </ThreadPrimitive.Root>
         </AssistantRuntimeProvider>
@@ -32,7 +32,8 @@ export function WaChatThread({ account, connection, contact, events, loading, er
   );
 }
 
-function ChatHeader({ account, contact, connection, loading }: { account: WAAccount; contact?: WaContact; connection?: LongConnectionState; loading: boolean }) {
+function ChatHeader({ account, contact, connection, loading, events, actionBusy, onMarkRead }: { account: WAAccount; contact?: WaContact; connection?: LongConnectionState; loading: boolean; events: WaChatEvent[]; actionBusy?: boolean; onMarkRead: () => void }) {
+  const unreadCount = events.filter((event) => !event.outgoing && !event.read).length;
   return (
     <header className="flex h-16 items-center justify-between gap-3 border-b border-border px-5">
       <div className="flex min-w-0 items-center gap-3">
@@ -45,6 +46,7 @@ function ChatHeader({ account, contact, connection, loading }: { account: WAAcco
       <div className="flex items-center gap-2">
         <WaConnectionDot connection={connection} loading={loading} />
         {contact && <Badge variant="outline">{contact.count}</Badge>}
+        <Button size="sm" variant="ghost" disabled={!contact || actionBusy || unreadCount === 0} onClick={onMarkRead} title="标记已读"><CheckCheck size={15} />{unreadCount > 0 ? unreadCount : ''}</Button>
         {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
         <Link className="inline-flex size-9 items-center justify-center rounded-lg transition hover:bg-muted" to={waAccountPath(waAccountID(account))} title="账号信息" aria-label="账号信息"><Info size={16} /></Link>
       </div>
@@ -52,9 +54,10 @@ function ChatHeader({ account, contact, connection, loading }: { account: WAAcco
   );
 }
 
-function BubbleMessage() {
+function BubbleMessage({ onDeleteMessage }: { onDeleteMessage: (messageID: string) => void }) {
   const meta = useMessage((message) => message.metadata.custom as WaChatMeta | undefined);
   const outgoing = Boolean(meta?.outgoing);
+  const messageID = useMessage((message) => message.id);
   return (
     <MessagePrimitive.Root className={`flex w-full ${outgoing ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[min(640px,82%)] rounded-3xl border px-4 py-3 shadow-sm ${outgoing ? 'rounded-tr-md border-emerald-200 bg-emerald-50' : 'rounded-tl-md border-border bg-card'}`}>
@@ -62,6 +65,7 @@ function BubbleMessage() {
         <div className="flex items-start gap-3">
           <WaMessageContent text={meta?.displayText || ''} />
           {meta?.copyText && <CopyButton text={meta.copyText} />}
+          <DeleteButton messageID={messageID} onDeleteMessage={onDeleteMessage} />
         </div>
       </div>
     </MessagePrimitive.Root>
@@ -75,6 +79,10 @@ function MessageTime() {
 
 function CopyButton({ text }: { text: string }) {
   return <button className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground" type="button" title="复制" aria-label="复制" onClick={() => void navigator.clipboard?.writeText(text)}><Copy size={14} /></button>;
+}
+
+function DeleteButton({ messageID, onDeleteMessage }: { messageID: string; onDeleteMessage: (messageID: string) => void }) {
+  return <button className="inline-flex size-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive" type="button" title="删除" aria-label="删除" onClick={() => onDeleteMessage(messageID)}><Trash2 size={14} /></button>;
 }
 
 function EmptyConversation({ title }: { title: string }) {

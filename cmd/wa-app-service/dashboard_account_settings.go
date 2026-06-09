@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 
 	waappv1 "github.com/byte-v-forge/wa-app/gen/go/byte/v/forge/waapp/v1"
@@ -104,20 +102,7 @@ func (s *dashboardHTTP) requireAccountSettingsPost(w http.ResponseWriter, r *htt
 }
 
 func readAccountSettingsPayload(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return nil, false
-	}
-	payload := map[string]any{}
-	if len(body) == 0 {
-		return payload, true
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "request body must be json"})
-		return nil, false
-	}
-	return payload, true
+	return readJSONPayload(w, r)
 }
 
 func accountSettingsRequestContext(payload map[string]any, prefix string) *waappv1.RequestContext {

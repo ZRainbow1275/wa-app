@@ -44,3 +44,14 @@ Implementation note: wa-app now normalizes only confirmed `DYH` wrappers, preser
 ## One-time historical plaintext backfill
 
 Historical rows created before `plaintext_value` was persisted can be repaired by re-invoking `WaExtractionService.DecryptMessage` with `include_sensitive_plaintext = true` and `SESSION_COMMIT_POLICY_TRANSIENT`. This is an operational one-off: it writes normal `wa_decrypted_messages` rows through the service path and does not add migration code or retain temporary tooling.
+
+## Read receipt and delete actions
+
+Reverse targets:
+
+- `SendReadReceiptJob.smali`, `ReadReceiptUtils`, `AbstractC128505kE`, `EnumC128745kd`: WA read receipts are chatd `<receipt>` nodes with `to`, first stanza `id`, `type="read"`, optional `participant`, and optional extra IDs under `<list><item id="..."/></list>`.
+- `C2P0.java`, `C53042Og.java`: app-state has `markChatAsReadAction` for durable chat read sync.
+- `C2P0.java`, `C53022Oe.java`, `24L.smali`, `C24S.java`: delete-for-me is an app-state/syncd local action in collection `deleteMessageForMe`.
+- `C30281DcU.java`, `E5X.java`, `FIR.java`, `C31335DwJ.java`, `C31336DwK.java`: delete-for-everyone is an E2E protocol-message revoke and must use the encrypted send pipeline.
+
+Current wa-app implementation stores the original stanza ID as `provider_message_id`, sends minimal chatd read receipts for selected inbound messages, and persists local `read_at`. Delete-for-me is implemented as a local soft delete (`DELETED_FOR_ME`) so message lists and decrypt backfills skip those rows. App-state read/delete sync and E2E revoke remain intentionally unsupported until their full send/sync pipeline is implemented.

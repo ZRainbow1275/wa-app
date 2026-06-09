@@ -261,19 +261,34 @@ func (s *chatdSession) receiveBatch(input EngineMessageInput, now time.Time) ([]
 			contact := firstNonEmpty(node.Attrs["from"], node.Attrs["participant"])
 			sender := firstNonEmpty(node.Attrs["participant"], node.Attrs["from"])
 			payloadSummary := nodePayloadSummary(node)
-			messages = append(messages, &waappv1.InboundMessage{MessageId: inboundMessageID(input.WAAccountID, node.Attrs["id"], node.Tag, sender, payloadSummary), MessageSessionId: input.MessageSessionID, Kind: inboundKind(node.Tag), EncryptionState: waappv1.MessageEncryptionState_MESSAGE_ENCRYPTION_STATE_PLAINTEXT, AckStatus: ackStatusForNode(node), ContactRef: contact, SenderRef: sender, PayloadRef: "node:" + redacted(payloadSummary), ReceivedAt: timestamppb.New(now)})
+			messages = append(messages, &waappv1.InboundMessage{MessageId: inboundMessageID(input.WAAccountID, node.Attrs["id"], node.Tag, sender, payloadSummary), MessageSessionId: input.MessageSessionID, Kind: inboundKind(node.Tag), EncryptionState: waappv1.MessageEncryptionState_MESSAGE_ENCRYPTION_STATE_PLAINTEXT, AckStatus: ackStatusForNode(node), ContactRef: contact, SenderRef: sender, PayloadRef: "node:" + redacted(payloadSummary), ProviderMessageId: node.Attrs["id"], ProviderTimestamp: chatdProviderTimestamp(node.Attrs["t"]), DeleteStatus: waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED, ReceivedAt: timestamppb.New(now)})
 			continue
 		}
 		for _, enc := range encs {
 			payloadRef := payloadRefForEnc(input.WAAccountID, enc.Payload)
 			payloads = append(payloads, enc)
-			messages = append(messages, &waappv1.InboundMessage{MessageId: inboundMessageID(input.WAAccountID, enc.StanzaID, node.Tag, enc.Sender, enc.Path+":"+hexKey(enc.Payload)), MessageSessionId: input.MessageSessionID, Kind: inboundKind(node.Tag), EncryptionState: waappv1.MessageEncryptionState_MESSAGE_ENCRYPTION_STATE_ENCRYPTED, AckStatus: ackStatusForNode(node), ContactRef: enc.Contact, SenderRef: enc.Sender, PayloadRef: payloadRef, ReceivedAt: timestamppb.New(now)})
+			messages = append(messages, &waappv1.InboundMessage{MessageId: inboundMessageID(input.WAAccountID, enc.StanzaID, node.Tag, enc.Sender, enc.Path+":"+hexKey(enc.Payload)), MessageSessionId: input.MessageSessionID, Kind: inboundKind(node.Tag), EncryptionState: waappv1.MessageEncryptionState_MESSAGE_ENCRYPTION_STATE_ENCRYPTED, AckStatus: ackStatusForNode(node), ContactRef: enc.Contact, SenderRef: enc.Sender, PayloadRef: payloadRef, ProviderMessageId: enc.StanzaID, ProviderTimestamp: chatdProviderTimestamp(enc.StanzaTimestamp), DeleteStatus: waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED, ReceivedAt: timestamppb.New(now)})
 			if len(messages) >= maxMessages {
 				break
 			}
 		}
 	}
 	return messages, payloads, update, nil
+}
+
+func chatdProviderTimestamp(value string) *timestamppb.Timestamp {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	stamp, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || stamp <= 0 {
+		return nil
+	}
+	if stamp > 1_000_000_000_000 {
+		return timestamppb.New(time.UnixMilli(stamp).UTC())
+	}
+	return timestamppb.New(time.Unix(stamp, 0).UTC())
 }
 
 func inboundMessageID(accountID string, stanzaID string, tag string, sender string, fingerprint string) string {

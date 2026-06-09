@@ -15,6 +15,8 @@ export type WaChatEvent = {
   sender: string;
   copyText?: string;
   outgoing: boolean;
+  read: boolean;
+  readAt?: Date;
 };
 
 export type WaContact = {
@@ -27,7 +29,7 @@ export type WaContact = {
   profilePictureURL?: string;
 };
 
-export type WaChatMeta = Pick<WaChatEvent, 'source' | 'sender' | 'copyText' | 'outgoing'> & { displayText: string };
+export type WaChatMeta = Pick<WaChatEvent, 'source' | 'sender' | 'copyText' | 'outgoing' | 'read' | 'readAt'> & { displayText: string };
 
 export function buildWaChatEvents(messages: AccountMessage[], otps: OtpMessage[]) {
   const chatMessages = messages.filter((message) => message.kind === InboundMessageKind.INBOUND_MESSAGE_KIND_MESSAGE);
@@ -72,7 +74,7 @@ export function toAssistantMessage(event: WaChatEvent): ThreadMessageLike {
     content: event.text,
     createdAt: event.at,
     status: { type: 'complete', reason: 'stop' },
-    metadata: { custom: { source: event.source, sender: event.sender, copyText: event.copyText, outgoing: event.outgoing, displayText: event.text } satisfies WaChatMeta },
+    metadata: { custom: { source: event.source, sender: event.sender, copyText: event.copyText, outgoing: event.outgoing, displayText: event.text, read: event.read, readAt: event.readAt } satisfies WaChatMeta },
   };
 }
 
@@ -92,6 +94,7 @@ function otpEvent(item: OtpMessage): WaChatEvent {
     sender: sourcePartyLabel(item.source_party),
     copyText: item.otp?.value || '',
     outgoing: false,
+    read: false,
   };
 }
 
@@ -106,16 +109,14 @@ function messageEvent(item: AccountMessage): WaChatEvent {
     sender: sourcePartyLabel(item.sender_ref || item.contact_ref),
     copyText: item.text?.value || '',
     outgoing: item.direction === AccountMessageDirection.ACCOUNT_MESSAGE_DIRECTION_OUTBOUND,
+    read: Boolean(item.read_at),
+    readAt: parseDate(item.read_at),
   };
 }
 
 function contactID(item: OtpMessage) { return (item.source_party || '').trim() || 'unknown'; }
 
-function newerDate(a?: Date, b?: Date) {
-  if (!a) return b;
-  if (!b) return a;
-  return a.getTime() > b.getTime() ? a : b;
-}
+function newerDate(a?: Date, b?: Date) { return !a ? b : !b ? a : a.getTime() > b.getTime() ? a : b; }
 
 function byOtpTime(a: OtpMessage, b: OtpMessage) {
   return (parseDate(a.received_at)?.getTime() || 0) - (parseDate(b.received_at)?.getTime() || 0);
@@ -194,8 +195,4 @@ function phoneTitle(number?: string) {
   return value ? `+${value}` : '';
 }
 
-function parseDate(value?: string) {
-  if (!value) return undefined;
-  const time = new Date(value);
-  return Number.isNaN(time.getTime()) ? undefined : time;
-}
+function parseDate(value?: string) { const time = value ? new Date(value) : undefined; return time && !Number.isNaN(time.getTime()) ? time : undefined; }

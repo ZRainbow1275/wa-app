@@ -19,6 +19,8 @@ service WaMessagingService {
   rpc ReceiveMessageBatch(ReceiveMessageBatchRequest) returns (ReceiveMessageBatchResponse);
   rpc ListAccountMessages(ListAccountMessagesRequest) returns (ListAccountMessagesResponse);
   rpc GetLongConnectionStatus(GetLongConnectionStatusRequest) returns (GetLongConnectionStatusResponse);
+  rpc MarkAccountMessagesRead(MarkAccountMessagesReadRequest) returns (MarkAccountMessagesReadResponse);
+  rpc DeleteAccountMessages(DeleteAccountMessagesRequest) returns (DeleteAccountMessagesResponse);
   rpc AcknowledgeMessage(AcknowledgeMessageRequest) returns (AcknowledgeMessageResponse);
   rpc CloseMessageSession(CloseMessageSessionRequest) returns (CloseMessageSessionResponse);
 }
@@ -54,6 +56,18 @@ enum MessageAckStatus {
   MESSAGE_ACK_STATUS_PENDING = 2;
   MESSAGE_ACK_STATUS_ACKED = 3;
   MESSAGE_ACK_STATUS_FAILED = 4;
+}
+
+enum MessageDeleteStatus {
+  MESSAGE_DELETE_STATUS_UNSPECIFIED = 0;
+  MESSAGE_DELETE_STATUS_NOT_DELETED = 1;
+  MESSAGE_DELETE_STATUS_DELETED_FOR_ME = 2;
+}
+
+enum AccountMessageDeleteMode {
+  ACCOUNT_MESSAGE_DELETE_MODE_UNSPECIFIED = 0;
+  ACCOUNT_MESSAGE_DELETE_MODE_FOR_ME = 1;
+  ACCOUNT_MESSAGE_DELETE_MODE_FOR_EVERYONE = 2;
 }
 
 enum AccountMessageDirection {
@@ -103,6 +117,11 @@ message InboundMessage {
   google.protobuf.Timestamp received_at = 8;
   WaError last_error = 9;
   string contact_ref = 10;
+  string provider_message_id = 11;
+  google.protobuf.Timestamp provider_timestamp = 12;
+  google.protobuf.Timestamp read_at = 13;
+  MessageDeleteStatus delete_status = 14;
+  google.protobuf.Timestamp deleted_at = 15;
 }
 
 message AccountMessage {
@@ -119,6 +138,9 @@ message AccountMessage {
   SensitiveText text = 11;
   google.protobuf.Timestamp received_at = 12;
   WaError last_error = 13;
+  google.protobuf.Timestamp read_at = 14;
+  MessageDeleteStatus delete_status = 15;
+  google.protobuf.Timestamp deleted_at = 16;
 }
 
 message LongConnectionState {
@@ -198,6 +220,31 @@ message GetLongConnectionStatusRequest {
 
 message GetLongConnectionStatusResponse {
   repeated LongConnectionState connections = 1;
+  WaError error = 2;
+}
+
+message MarkAccountMessagesReadRequest {
+  RequestContext context = 1;
+  string wa_account_id = 2;
+  repeated string account_message_ids = 3;
+  bool local_only = 4;
+}
+
+message MarkAccountMessagesReadResponse {
+  int32 updated_count = 1;
+  int32 receipt_sent_count = 2;
+  WaError error = 3;
+}
+
+message DeleteAccountMessagesRequest {
+  RequestContext context = 1;
+  string wa_account_id = 2;
+  repeated string account_message_ids = 3;
+  AccountMessageDeleteMode mode = 4;
+}
+
+message DeleteAccountMessagesResponse {
+  int32 updated_count = 1;
   WaError error = 2;
 }
 

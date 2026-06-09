@@ -48,7 +48,7 @@ func (s *SQLiteStore) queryAccountMessages(ctx context.Context, waAccountIDValue
 ), '')
 FROM wa_sqlite_inbound_messages m
 JOIN wa_sqlite_message_sessions s ON s.id=m.message_session_id
-WHERE s.wa_account_id=? AND json_extract(m.payload, '$.kind')=?`
+WHERE s.wa_account_id=? AND json_extract(m.payload, '$.kind')=? AND COALESCE(json_extract(m.payload, '$.delete_status'), 'MESSAGE_DELETE_STATUS_NOT_DELETED')<>'MESSAGE_DELETE_STATUS_DELETED_FOR_ME'`
 	args := []any{waAccountIDValue, waappv1.InboundMessageKind_INBOUND_MESSAGE_KIND_MESSAGE.String()}
 	if contactRef != "" {
 		query += ` AND COALESCE(NULLIF(json_extract(m.payload, '$.contact_ref'), ''), json_extract(m.payload, '$.sender_ref'))=?`

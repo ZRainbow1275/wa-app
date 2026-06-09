@@ -220,6 +220,25 @@ type EngineLoginCheckResult struct {
 	Err    error
 }
 
+type EngineMessageReadReceiptInput struct {
+	WAAccountID          string
+	ClientProfileID      string
+	RegisteredIdentityID string
+	Messages             []EngineMessageReadReceipt
+	RemoteTimeout        time.Duration
+}
+
+type EngineMessageReadReceipt struct {
+	ChatJID           string
+	ParticipantJID    string
+	ProviderMessageID string
+}
+
+type EngineMessageReadReceiptResult struct {
+	Sent int
+	Err  error
+}
+
 type EngineMessageBatchResult struct {
 	Messages []*waappv1.InboundMessage
 	Contacts []*waappv1.WAContact

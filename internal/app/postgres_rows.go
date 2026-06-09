@@ -293,33 +293,54 @@ func (r sessionRow) toProto() *waappv1.MessageSession {
 }
 
 type messageRow struct {
-	id              string
-	sessionID       string
-	kind            string
-	encryptionState string
-	ackStatus       string
-	contactRef      string
-	senderRef       string
-	payloadRef      string
-	errCode         string
-	errMessage      string
-	errRetryable    bool
-	receivedAt      time.Time
+	id                string
+	sessionID         string
+	kind              string
+	encryptionState   string
+	ackStatus         string
+	contactRef        string
+	senderRef         string
+	payloadRef        string
+	providerMessageID string
+	providerTimestamp sql.NullTime
+	readAt            sql.NullTime
+	deleteStatus      string
+	deletedAt         sql.NullTime
+	errCode           string
+	errMessage        string
+	errRetryable      bool
+	receivedAt        time.Time
 }
 
 func (r messageRow) toProto() *waappv1.InboundMessage {
 	return &waappv1.InboundMessage{
-		MessageId:        r.id,
-		MessageSessionId: r.sessionID,
-		Kind:             waappv1.InboundMessageKind(waappv1.InboundMessageKind_value[r.kind]),
-		EncryptionState:  waappv1.MessageEncryptionState(waappv1.MessageEncryptionState_value[r.encryptionState]),
-		AckStatus:        waappv1.MessageAckStatus(waappv1.MessageAckStatus_value[r.ackStatus]),
-		ContactRef:       r.contactRef,
-		SenderRef:        r.senderRef,
-		PayloadRef:       r.payloadRef,
-		ReceivedAt:       timestamppb.New(r.receivedAt.UTC()),
-		LastError:        protoError(r.errCode, r.errMessage, r.errRetryable),
+		MessageId:         r.id,
+		MessageSessionId:  r.sessionID,
+		Kind:              waappv1.InboundMessageKind(waappv1.InboundMessageKind_value[r.kind]),
+		EncryptionState:   waappv1.MessageEncryptionState(waappv1.MessageEncryptionState_value[r.encryptionState]),
+		AckStatus:         waappv1.MessageAckStatus(waappv1.MessageAckStatus_value[r.ackStatus]),
+		ContactRef:        r.contactRef,
+		SenderRef:         r.senderRef,
+		PayloadRef:        r.payloadRef,
+		ProviderMessageId: r.providerMessageID,
+		ProviderTimestamp: sqlTime(r.providerTimestamp),
+		ReadAt:            sqlTime(r.readAt),
+		DeleteStatus:      messageDeleteStatus(r.deleteStatus),
+		DeletedAt:         sqlTime(r.deletedAt),
+		ReceivedAt:        timestamppb.New(r.receivedAt.UTC()),
+		LastError:         protoError(r.errCode, r.errMessage, r.errRetryable),
 	}
+}
+
+func messageDeleteStatus(value string) waappv1.MessageDeleteStatus {
+	if value == "" {
+		return waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED
+	}
+	status, ok := waappv1.MessageDeleteStatus_value[value]
+	if !ok {
+		return waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_UNSPECIFIED
+	}
+	return waappv1.MessageDeleteStatus(status)
 }
 
 type decryptedRow struct {

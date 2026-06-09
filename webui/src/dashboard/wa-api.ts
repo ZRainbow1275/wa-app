@@ -1,7 +1,7 @@
 import type { RequestAccountEmailOtpResponse, SetAccountEmailResponse, SetTwoFactorAuthSettingsResponse, VerifyAccountEmailOtpResponse } from '../proto/byte/v/forge/waapp/v1/account_settings';
 import type { ListWAContactsResponse, ResolveWAContactsResponse } from '../proto/byte/v/forge/waapp/v1/contacts';
 import type { ListAccountOtpMessagesResponse } from '../proto/byte/v/forge/waapp/v1/extraction';
-import type { GetLongConnectionStatusResponse, ListAccountMessagesResponse, LongConnectionState } from '../proto/byte/v/forge/waapp/v1/messaging';
+import type { DeleteAccountMessagesResponse, GetLongConnectionStatusResponse, ListAccountMessagesResponse, LongConnectionState, MarkAccountMessagesReadResponse } from '../proto/byte/v/forge/waapp/v1/messaging';
 import type { DeleteWAAccountResponse, ListClientProfilesResponse, ListWAAccountsResponse, WAAccount } from '../proto/byte/v/forge/waapp/v1/profile';
 
 export const ACCOUNT_PAGE_SIZE = 100;
@@ -50,6 +50,14 @@ export function getWaClientProfiles(waAccountId: string, cursor = '') {
   const params = new URLSearchParams({ wa_account_id: waAccountId, limit: '20' });
   if (cursor) params.set('cursor', cursor);
   return api<ListClientProfilesResponse>(`/api/wa/client-profiles?${params}`);
+}
+
+export function markWaMessagesRead(waAccountId: string, accountMessageIds: string[], localOnly = false) {
+  return api<MarkAccountMessagesReadResponse>('/api/wa/messages/read', { method: 'POST', body: JSON.stringify({ wa_account_id: waAccountId, account_message_ids: accountMessageIds, local_only: localOnly }) });
+}
+
+export function deleteWaMessagesForMe(waAccountId: string, accountMessageIds: string[]) {
+  return api<DeleteAccountMessagesResponse>('/api/wa/messages/delete', { method: 'POST', body: JSON.stringify({ wa_account_id: waAccountId, account_message_ids: accountMessageIds, mode: 'for_me' }) });
 }
 
 export function getWaMessages(waAccountId: string, cursor = '') {

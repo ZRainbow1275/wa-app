@@ -5,6 +5,7 @@ import (
 	"time"
 
 	waappv1 "github.com/byte-v-forge/wa-app/gen/go/byte/v/forge/waapp/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type accountMessageParts struct {
@@ -22,6 +23,9 @@ type accountMessageParts struct {
 	secretRef       string
 	lastError       *waappv1.WaError
 	receivedAt      time.Time
+	readAt          time.Time
+	deleteStatus    waappv1.MessageDeleteStatus
+	deletedAt       time.Time
 }
 
 func newAccountMessage(parts accountMessageParts, includeSensitiveText bool) *waappv1.AccountMessage {
@@ -48,6 +52,9 @@ func newAccountMessage(parts accountMessageParts, includeSensitiveText bool) *wa
 		Text:             text,
 		ReceivedAt:       timestamp(parts.receivedAt),
 		LastError:        parts.lastError,
+		ReadAt:           timestamp(parts.readAt),
+		DeleteStatus:     accountMessageDeleteStatus(parts.deleteStatus),
+		DeletedAt:        timestamp(parts.deletedAt),
 	}
 }
 
@@ -71,7 +78,24 @@ func newAccountMessageFromInbound(accountID string, msg *waappv1.InboundMessage,
 		secretRef:       text.GetSecretRef(),
 		lastError:       msg.GetLastError(),
 		receivedAt:      timeFromProto(msg.GetReceivedAt()),
+		readAt:          protoTimeOrZero(msg.GetReadAt()),
+		deleteStatus:    msg.GetDeleteStatus(),
+		deletedAt:       protoTimeOrZero(msg.GetDeletedAt()),
 	}, includeSensitiveText)
+}
+
+func accountMessageDeleteStatus(status waappv1.MessageDeleteStatus) waappv1.MessageDeleteStatus {
+	if status == waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_UNSPECIFIED {
+		return waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED
+	}
+	return status
+}
+
+func protoTimeOrZero(ts *timestamppb.Timestamp) time.Time {
+	if ts == nil {
+		return time.Time{}
+	}
+	return ts.AsTime().UTC()
 }
 
 func contactRefForMessage(contactRef string, sender string) string {

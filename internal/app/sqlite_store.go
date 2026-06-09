@@ -357,6 +357,11 @@ func (s *SQLiteStore) SaveInboundMessages(ctx context.Context, messages []*waapp
 	if len(messages) == 0 {
 		return nil
 	}
+	for _, msg := range messages {
+		if existing := s.existingInboundMessage(ctx, msg.GetMessageId()); existing != nil {
+			mergeInboundMessageState(existing, msg)
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -375,6 +380,41 @@ ON CONFLICT(id) DO UPDATE SET encryption_state=excluded.encryption_state, payloa
 	return tx.Commit()
 }
 
+func (s *SQLiteStore) existingInboundMessage(ctx context.Context, id string) *waappv1.InboundMessage {
+	if strings.TrimSpace(id) == "" {
+		return nil
+	}
+	msg := &waappv1.InboundMessage{}
+	if err := s.loadPayload(ctx, "wa_sqlite_inbound_messages", id, msg, waappv1.WaErrorCode_WA_ERROR_CODE_MESSAGE_NOT_FOUND, "message not found"); err != nil {
+		return nil
+	}
+	return msg
+}
+
+func mergeInboundMessageState(existing *waappv1.InboundMessage, next *waappv1.InboundMessage) {
+	if existing == nil || next == nil {
+		return
+	}
+	if next.GetProviderMessageId() == "" {
+		next.ProviderMessageId = existing.GetProviderMessageId()
+	}
+	if next.GetProviderTimestamp() == nil {
+		next.ProviderTimestamp = existing.GetProviderTimestamp()
+	}
+	if next.GetReadAt() == nil {
+		next.ReadAt = existing.GetReadAt()
+	}
+	if next.GetDeleteStatus() == waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_UNSPECIFIED {
+		next.DeleteStatus = existing.GetDeleteStatus()
+	}
+	if next.GetDeleteStatus() == waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_UNSPECIFIED {
+		next.DeleteStatus = waappv1.MessageDeleteStatus_MESSAGE_DELETE_STATUS_NOT_DELETED
+	}
+	if next.GetDeletedAt() == nil {
+		next.DeletedAt = existing.GetDeletedAt()
+	}
+}
+
 func (s *SQLiteStore) GetInboundMessage(ctx context.Context, id string) (*waappv1.InboundMessage, error) {
 	msg := &waappv1.InboundMessage{}
 	return msg, s.loadPayload(ctx, "wa_sqlite_inbound_messages", id, msg, waappv1.WaErrorCode_WA_ERROR_CODE_MESSAGE_NOT_FOUND, "message not found")
@@ -387,7 +427,7 @@ func (s *SQLiteStore) ListPendingEncryptedInboundMessages(ctx context.Context, w
 	return sqliteListPayloads(ctx, s.db, func() *waappv1.InboundMessage { return &waappv1.InboundMessage{} }, `SELECT m.payload FROM wa_sqlite_inbound_messages m
 JOIN wa_sqlite_message_sessions s ON s.id=m.message_session_id
 LEFT JOIN wa_sqlite_decrypted_messages d ON d.message_id=m.id
-WHERE s.wa_account_id=? AND s.client_profile_id=? AND m.encryption_state=? AND d.id IS NULL
+WHERE s.wa_account_id=? AND s.client_profile_id=? AND m.encryption_state=? AND COALESCE(json_extract(m.payload, '$.delete_status'), 'MESSAGE_DELETE_STATUS_NOT_DELETED')<>'MESSAGE_DELETE_STATUS_DELETED_FOR_ME' AND d.id IS NULL
 ORDER BY m.received_at ASC, m.id ASC LIMIT ?`, waAccountIDValue, clientProfileID, waappv1.MessageEncryptionState_MESSAGE_ENCRYPTION_STATE_ENCRYPTED.String(), limit)
 }
 
@@ -466,14 +506,18 @@ func (s *SQLiteStore) ListAccountOTPMessages(ctx context.Context, waAccountIDVal
 	}
 	limit = normalizePageLimit(limit)
 	lookahead := keysetLookaheadLimit(limit)
-	query := `SELECT payload FROM wa_sqlite_otp_messages WHERE wa_account_id=?`
+	query := `SELECT o.payload FROM wa_sqlite_otp_messages o
+WHERE o.wa_account_id=? AND NOT EXISTS (
+  SELECT 1 FROM wa_sqlite_inbound_messages m
+  WHERE m.id=json_extract(o.payload, '$.message_id') AND COALESCE(json_extract(m.payload, '$.delete_status'), 'MESSAGE_DELETE_STATUS_NOT_DELETED')='MESSAGE_DELETE_STATUS_DELETED_FOR_ME'
+)`
 	args := []any{waAccountIDValue}
 	if hasKeysetCursor(cursor) {
 		value := sqliteTimeValue(cursor.UpdatedAt)
-		query += ` AND (received_at < ? OR (received_at = ? AND id < ?))`
+		query += ` AND (o.received_at < ? OR (o.received_at = ? AND o.id < ?))`
 		args = append(args, value, value, cursor.ID)
 	}
-	query += ` ORDER BY received_at DESC, id DESC LIMIT ?`
+	query += ` ORDER BY o.received_at DESC, o.id DESC LIMIT ?`
 	args = append(args, lookahead)
 	items, err := sqliteListPayloads(ctx, s.db, func() *waappv1.OtpMessage { return &waappv1.OtpMessage{} }, query, args...)
 	if err != nil {
