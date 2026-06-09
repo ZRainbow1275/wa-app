@@ -12,6 +12,7 @@ import (
 )
 
 const contactProfilePictureCacheTTL = 6 * time.Hour
+const contactProfilePictureLatestCacheVersion = "latest"
 
 type waContactProfilePictureResolver interface {
 	ResolveContactProfilePicture(context.Context, EngineContactProfilePictureInput) EngineContactProfilePictureResult
@@ -36,9 +37,6 @@ func (s *Server) GetWAContactProfilePicture(ctx context.Context, contactID strin
 	contact, err := s.store.GetWAContact(ctx, contactID)
 	if err != nil {
 		return WAContactProfilePicture{}, err
-	}
-	if contact.GetProfilePictureId() == "" {
-		return WAContactProfilePicture{}, NewError(waappv1.WaErrorCode_WA_ERROR_CODE_MESSAGE_NOT_FOUND, "WA profile picture not found", false)
 	}
 	if cached, ok := s.cachedWAContactProfilePicture(ctx, contact); ok {
 		return cached, nil
@@ -83,10 +81,11 @@ func (s *Server) GetWAContactProfilePicture(ctx context.Context, contactID strin
 }
 
 func (s *Server) cachedWAContactProfilePicture(ctx context.Context, contact *waappv1.WAContact) (WAContactProfilePicture, bool) {
-	if s == nil || s.runtime == nil || contact == nil || contact.GetProfilePictureId() == "" {
+	if s == nil || s.runtime == nil || contact == nil || contact.GetContactId() == "" {
 		return WAContactProfilePicture{}, false
 	}
-	data, err := s.runtime.GetTransientState(ctx, contactProfilePictureCacheKey(contact.GetContactId(), contact.GetProfilePictureId()))
+	version := contactProfilePictureCacheVersion(contact.GetProfilePictureId())
+	data, err := s.runtime.GetTransientState(ctx, contactProfilePictureCacheKey(contact.GetContactId(), version))
 	if err != nil || len(data) == 0 {
 		return WAContactProfilePicture{}, false
 	}
@@ -98,18 +97,26 @@ func (s *Server) cachedWAContactProfilePicture(ctx context.Context, contact *waa
 }
 
 func (s *Server) cacheWAContactProfilePicture(ctx context.Context, contactID string, picture WAContactProfilePicture) {
-	if s == nil || s.runtime == nil || contactID == "" || picture.ProfilePictureID == "" || len(picture.Data) == 0 {
+	if s == nil || s.runtime == nil || contactID == "" || len(picture.Data) == 0 {
 		return
 	}
 	data, err := json.Marshal(contactProfilePictureCacheEntry{ContentType: picture.ContentType, Data: picture.Data})
 	if err != nil {
 		return
 	}
-	_ = s.runtime.SaveTransientState(ctx, contactProfilePictureCacheKey(contactID, picture.ProfilePictureID), data, contactProfilePictureCacheTTL)
+	_ = s.runtime.SaveTransientState(ctx, contactProfilePictureCacheKey(contactID, contactProfilePictureCacheVersion(picture.ProfilePictureID)), data, contactProfilePictureCacheTTL)
 }
 
 func contactProfilePictureCacheKey(contactID string, profilePictureID string) string {
 	return "wa-contact-profile-picture:" + contactID + ":" + profilePictureID
+}
+
+func contactProfilePictureCacheVersion(profilePictureID string) string {
+	profilePictureID = strings.TrimSpace(profilePictureID)
+	if profilePictureID == "" {
+		return contactProfilePictureLatestCacheVersion
+	}
+	return profilePictureID
 }
 
 func IsWAContactProfilePictureNotFound(err error) bool {

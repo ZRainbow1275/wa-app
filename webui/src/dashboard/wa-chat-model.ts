@@ -137,7 +137,9 @@ function sourcePartyLabel(value?: string) {
 function recordContactID(record: WAContactRecord) { return (record.jid || record.number || record.contact_id || '').trim(); }
 
 function contactProfilePictureURL(record: WAContactRecord) {
-  return record.profile_picture_id && record.contact_id ? `/api/wa/contacts/${encodeURIComponent(record.contact_id)}/profile-picture` : undefined;
+  if (!record.contact_id || record.kind === WAContactKind.WA_CONTACT_KIND_SYSTEM) return undefined;
+  const version = record.profile_picture_id || record.audit?.updated_at || 'latest';
+  return `/api/wa/contacts/${encodeURIComponent(record.contact_id)}/profile-picture?v=${encodeURIComponent(version)}`;
 }
 
 function recordTitle(record: WAContactRecord) {
