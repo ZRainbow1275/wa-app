@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"log"
+	"strings"
 	"sync"
 	"time"
+
+	waappv1 "github.com/byte-v-forge/wa-app/gen/go/byte/v/forge/waapp/v1"
 )
 
 const (
@@ -16,23 +20,31 @@ type longConnectionNativeEngine struct {
 
 	mu          sync.Mutex
 	session     *chatdSession
+	fallback    *NativeEngine
 	release     func()
 	releaseOnce sync.Once
 }
 
-func newLongConnectionNativeEngine(engine *NativeEngine, release ...func()) *longConnectionNativeEngine {
-	cleanup := func() {}
-	if len(release) > 0 && release[0] != nil {
-		cleanup = release[0]
+type longConnectionNativeEngineOptions struct {
+	Release  func()
+	Fallback *NativeEngine
+}
+
+var longConnectionProxySessionFallbackLogs = proxyLogLimiter{last: map[string]time.Time{}}
+
+func newLongConnectionNativeEngine(engine *NativeEngine, opts longConnectionNativeEngineOptions) *longConnectionNativeEngine {
+	cleanup := opts.Release
+	if cleanup == nil {
+		cleanup = func() {}
 	}
-	return &longConnectionNativeEngine{NativeEngine: engine, release: cleanup}
+	return &longConnectionNativeEngine{NativeEngine: engine, fallback: opts.Fallback, release: cleanup}
 }
 
 func (e *longConnectionNativeEngine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	err := e.closeLocked()
-	e.releaseOnce.Do(e.release)
+	e.releaseProxyRoute()
 	return err
 }
 
@@ -100,7 +112,29 @@ func (e *longConnectionNativeEngine) ensureSessionLocked(ctx context.Context, in
 			return nil, err
 		}
 	}
-	proxyURL, err := e.proxyURL()
+	session, err := e.openSessionWithEngine(ctx, e.NativeEngine, input, state)
+	if err == nil {
+		e.session = session
+		return session, nil
+	}
+	if reason := longConnectionProxySessionFallbackReason(err); reason != "" && e.fallback != nil {
+		if session, fallbackErr := e.openSessionWithEngine(ctx, e.fallback, input, state); fallbackErr == nil {
+			e.releaseProxyRoute()
+			e.NativeEngine = e.fallback
+			e.fallback = nil
+			e.session = session
+			logLongConnectionProxySessionFallback(reason)
+			return session, nil
+		}
+	}
+	return nil, err
+}
+
+func (e *longConnectionNativeEngine) openSessionWithEngine(ctx context.Context, engine *NativeEngine, input EngineMessageInput, state nativeState) (*chatdSession, error) {
+	if engine == nil {
+		return nil, NewError(waappv1.WaErrorCode_WA_ERROR_CODE_INTERNAL, "native engine is required", false)
+	}
+	proxyURL, err := engine.proxyURL()
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +145,45 @@ func (e *longConnectionNativeEngine) ensureSessionLocked(ctx context.Context, in
 	if err != nil {
 		return nil, err
 	}
-	e.session = session
 	return session, nil
+}
+
+func (e *longConnectionNativeEngine) releaseProxyRoute() {
+	if e == nil {
+		return
+	}
+	e.releaseOnce.Do(e.release)
+}
+
+func longConnectionProxySessionFallbackReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "connection reset by peer"):
+		return "connection_reset"
+	case strings.Contains(text, "i/o timeout") || strings.Contains(text, "deadline") || strings.Contains(text, "timeout"):
+		return "timeout"
+	case strings.Contains(text, "socks5"):
+		return "socks5_failed"
+	case strings.Contains(text, "proxy"):
+		return "proxy_failed"
+	case strings.Contains(text, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(text, "eof"):
+		return "eof"
+	default:
+		return ""
+	}
+}
+
+func logLongConnectionProxySessionFallback(reason string) {
+	reason = safeProxyLogToken(reason, "session_failed")
+	if !longConnectionProxySessionFallbackLogs.allow("wa_long_connection_session", reason, time.Now().UTC()) {
+		return
+	}
+	log.Printf("WA long connection proxy session fallback reason=%s", reason)
 }
 
 func longConnectionChatdEndpoints(state nativeState) []chatdEndpoint {

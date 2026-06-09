@@ -515,16 +515,20 @@ func (s *Server) longConnectionRunner(ctx context.Context, loginState *waappv1.L
 		return s.runner, nil
 	}
 	if strings.TrimSpace(engine.activeProxyURL) != "" {
-		return newLongConnectionNativeEngine(engine), nil
+		return newLongConnectionNativeEngine(engine, longConnectionNativeEngineOptions{}), nil
 	}
-	proxyEngine, release, _ := s.optionalGatewayProxyEngine(ctx, engine, gatewayProxyEngineRequest{
+	proxyEngine, release, proxied := s.optionalGatewayProxyEngine(ctx, engine, gatewayProxyEngineRequest{
 		Username:      s.longProxyUsername,
 		Purpose:       "WA_LONG_CONNECTION",
 		CorrelationID: longConnectionProxyCorrelationID(loginState),
 		TTL:           longConnectionWaitTimeout + longConnectionChatdOpenTimeout,
 		Mode:          DynamicProxySessionModeSticky,
 	})
-	return newLongConnectionNativeEngine(proxyEngine, release), nil
+	opts := longConnectionNativeEngineOptions{Release: release}
+	if proxied {
+		opts.Fallback = engine
+	}
+	return newLongConnectionNativeEngine(proxyEngine, opts), nil
 }
 
 func longConnectionProxyCorrelationID(loginState *waappv1.LoginState) string {
